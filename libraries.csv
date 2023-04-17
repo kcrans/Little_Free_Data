@@ -1,0 +1,11 @@
+id,Name,Street__c,City__c,State_Province_Region__c,Postal_Zip_Code__c,Country__c,Traveling_Library__c,Official_Charter_Number__c,First_Map_Date__c,Map_Me__c,Map_Date__c,Duplicate_Charter_Number__c,Count_of_Primary_Stewards__c,Latitude_MapAnything__c,Longitude_MapAnything__c,Library_Geolocation__Latitude__s,Library_Geolocation__Longitude__s,check_in_count
+2,LIB-000023909,2517 Royalview Drive,Allison Park,PA,15101,United States,False,51923,2017-03-06,Mapped,2019-06-13,False,1.0,40.57748,-79.96517,40.57749939,-79.96510315,2
+3,LIB-000023910,2240 E Blaine St,Seattle,WA,98112,United States,False,50020,2017-03-06,Mapped,2017-03-06,False,1.0,47.63692,-122.30327,47.6369389,-122.3032646,1
+4,LIB-000023911,1620 Old Williamsburg Road,Yorktown,VA,23690,United States,False,39951,2017-03-06,Mapped,2017-03-06,False,1.0,37.23092,-76.5552699,37.2309476,-76.5554272,1
+5,LIB-000023912,411 Huronia Rd. Suite 5,Barrie,ON,L4N9B3,Canada,False,50443,2017-03-06,Mapped,2017-03-06,False,1.0,44.35251,-79.66444,44.3528459,-79.6636302,0
+6,LIB-000023913,315 Starboard Tack,Greenwood,SC,29649,United States,False,51173,2017-03-06,Mapped,2017-03-06,False,1.0,34.29637,-82.08826,34.296368,-82.088261,0
+7,LIB-000023914,624 Randolph avenue,Harahan,LA,70123,United States,False,52234,2017-03-06,Mapped,2017-03-06,False,1.0,29.94486,-90.20742,29.9448568,-90.2074778,3
+8,LIB-000023915,11202 Alpine Drive Sw,Port Orchard,WA,98367,United States,False,45615,2017-03-06,Mapped,2019-07-01,False,1.0,47.44682,-122.74622,47.4468281,-122.7462401,1
+9,LIB-000023916,7225 Lindell Blvd.,Saint Louis,MO,63130,United States,False,48202,2017-03-06,Mapped,2017-03-06,False,1.0,38.64933,-90.3223,38.6492853,-90.3223277,2
+10,LIB-000023917,5240 Wilkins Rd,Whitehouse,OH,43571,United States,False,49024,2017-03-06,Mapped,2017-03-06,False,1.0,41.5486227,-83.8396023,41.5450132,-83.8446916,0
+11,LIB-000023918,1547 W Palm Lane,Phoenix,AZ,85007,United States,False,50480,2017-03-06,Mapped,2017-03-06,False,1.0,33.46932,-112.09345,33.4693347,-112.09349,2
