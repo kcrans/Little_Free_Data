@@ -1,0 +1,129 @@
+---
+title: "Little Free Library Analysis"
+author: "Kaleb Crans"
+date: "2023-04-17"
+output: pdf_document
+---
+
+
+```{r setup}
+library(tidyverse)
+library(readr)
+
+rm(list = ls())
+```
+
+```{r}
+typeof(read_csv("libraries.csv"))
+if (file.exists("lfl.RData")) {
+  load("lfl.RData")
+} else {
+  libraries = as_tibble(read_csv("libraries.csv"))
+  save(libraries, file = "lfl.RData")
+}
+```
+
+## Data Cleaning and Preparation
+
+```{r}
+lapply(libraries, typeof)
+```
+
+Map_Me__c needs to be transformed into a logical variable, as "Taken Down Temporarily" and "Mapped" are the only two categories.
+
+```{r}
+libraries <- libraries %>% mutate(Map_Me__c = Map_Me__c ==  "Mapped")
+```
+
+
+
+```{r}
+max(libraries$check_in_count)
+```
+
+```{r}
+check_in_dist <- libraries  %>% count(check_in_count)
+ggplot(data = libraries, aes(x =  check_in_count)) +
+  ggtitle("Check-in count distribution") +
+  xlab("Number of check-ins") +
+  geom_histogram(binwidth = 1)
+```
+
+
+```{r}
+# Clean up alternative names for the same country:
+libraries <- libraries %>% mutate(Country__c = replace(Country__c, Country__c %in% c("USA", "US", "U.S.", "us", "Us"), "United States"))  %>% mutate(Country__c = replace(Country__c, Country__c == "canada", "Canada"))
+
+# Ranking of countries by number of little free libraries:
+libraries %>% count(Country__c) %>% arrange(desc(n))
+```
+
+The U.S. by and large has the greatest amount of little free libraries (with alternate spellings outpacing many countries even). Canada is the only country with a somewhat comparable amount, specifically if you adjust for population size.
+
+
+```{r}
+# US population
+us_pop <- 331900000
+
+# Canada population
+can_pop <- 38250000
+
+us_count <- libraries %>% filter(Country__c == "United States") %>% nrow
+
+can_count <- libraries %>% filter(Country__c == "Canada") %>% nrow
+```
+
+So the per capita number of little free libraries in the US is:
+```{r}
+format(us_count/us_pop, scientific = FALSE)
+```
+And in Canada is:
+```{r}
+format(can_count/can_pop, scientific = FALSE)
+```
+
+So we can conclude that Little Free Libraries are a predominately American phenomenon. For the purposes of further analysis, let's exclude all data points not in the US:
+
+```{r}
+libraries <- libraries %>% filter(Country__c == "United States")
+```
+
+How about the distribution by state?
+
+```{r}
+length(unique(libraries$State_Province_Region__c))
+```
+But there's only 50 states!
+```{r}
+libraries %>% count(State_Province_Region__c) %>% arrange(desc(n))
+```
+
+There's a bunch of different spelling variations. Let's instead take the actual coordinates and then find the states ourselves. One point of interest in the dataset to note that there are two sets of coordinates for each row: Latitude_MapAnything__c and Longitude_MapAnything__c vs Library_Geolocation__Latitude__s and Library_Geolocation__Longitude__s.
+
+If use Euclidean distances, the differences are:
+
+```{r}
+differences <- libraries %>% mutate(dif_lat = (abs(Latitude_MapAnything__c) - abs(Library_Geolocation__Latitude__s)), dif_long = abs(Longitude_MapAnything__c) - abs(Library_Geolocation__Longitude__s)) %>% select(dif_lat, dif_long, Latitude_MapAnything__c, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Library_Geolocation__Longitude__s)
+```
+The max distance is then:
+```{r}
+max(differences$dif_long)
+
+libraries %>% filter(Official_Charter_Number__c == 93143)
+```
+Sign error for longitude?
+
+```{r}
+libraries %>% filter(Official_Charter_Number__c == 151579)
+```
+
+
+Research Q's:
+
+Is their a correlation between income in a given zip code and the number of little free libraries?
+What about political part preference?
+How about climate(i.e. colder areas might have less LFLs which are outdoors by design)
+
+
+
+
