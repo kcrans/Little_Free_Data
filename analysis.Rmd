@@ -9,6 +9,8 @@ output: pdf_document
 ```{r setup}
 library(tidyverse)
 library(readr)
+library(sf)
+library(spData)
 
 rm(list = ls())
 ```
@@ -100,23 +102,90 @@ libraries %>% count(State_Province_Region__c) %>% arrange(desc(n))
 
 There's a bunch of different spelling variations. Let's instead take the actual coordinates and then find the states ourselves. One point of interest in the dataset to note that there are two sets of coordinates for each row: Latitude_MapAnything__c and Longitude_MapAnything__c vs Library_Geolocation__Latitude__s and Library_Geolocation__Longitude__s.
 
-If use Euclidean distances, the differences are:
+We can make a datframe with the differences as separate columns:
 
 ```{r}
 differences <- libraries %>% mutate(dif_lat = (abs(Latitude_MapAnything__c) - abs(Library_Geolocation__Latitude__s)), dif_long = abs(Longitude_MapAnything__c) - abs(Library_Geolocation__Longitude__s)) %>% select(dif_lat, dif_long, Latitude_MapAnything__c, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Library_Geolocation__Longitude__s)
 ```
-The max distance is then:
+
+If we take one example with a latitude difference of 16.6 and the plug the coordinates into Google maps, we get two different locations, one in Lake Park Iowa and the other in Lake Park Florida:
 ```{r}
-max(differences$dif_long)
-
-libraries %>% filter(Official_Charter_Number__c == 93143)
+libraries %>% filter(Latitude_MapAnything__c == 26.79489)
 ```
-Sign error for longitude?
+The MapAnything location:
+![Lake Park in Florida](lake_florida.png)
+
+The geolocation:
+
+![Lake Park in Iowa](lake_iowa.png)
+
+Another example is a location with a 101 degree difference in longitude. 
 
 ```{r}
-libraries %>% filter(Official_Charter_Number__c == 151579)
+libraries %>% filter(Latitude_MapAnything__c == 37.33889)
+```
+The actual location is in Kosovo, but because they put "KS" as the state this row was mistakenly assigned "United States" as its country. 
+
+The MapAnything location is in San Jose:
+
+
+and the Geolocation is in Kosovo:
+
+So we have two different examples where the correct coordinates are of different types. 
+
+
+```{r}
+libraries %>% select(Latitude_MapAnything__c, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Library_Geolocation__Longitude__s) %>% summary()
+```
+Thus summary statistics are similar, but there are enough differences to cause concern. Note that there are a decent amount of rows where the MapAnything coordinates are (0, 0):
+
+```{r}
+libraries %>% filter(Latitude_MapAnything__c == 0 & Longitude_MapAnything__c == 0) %>% count()
+```
+```{r}
+libraries %>% filter(id == 14180)
 ```
 
+
+These are basically missing values as all the libraries we are looking at are in the US and thus can't have these coordinates. If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
+
+![Screenshot of javascript snippet using Library_Geolocation for the pins on the map](latandlong.png)
+
+So let's just go with that then. 
+
+
+```{r}
+libraries %>% select(Postal_Zip_Code__c) %>% unique %>% count
+```
+
+
+
+```{r}
+lonlat_to_state <- function(pointsDF,
+                            states = spData::us_states,
+                            name_col = "NAME") {
+    ## Convert points data.frame to an sf POINTS object
+    pts <- st_as_sf(pointsDF, coords = 1:2, crs = 4326)
+
+    ## Transform spatial data to some planar coordinate system
+    ## (e.g. Web Mercator) as required for geometric operations
+    states <- st_transform(states, crs = 3857)
+    pts <- st_transform(pts, crs = 3857)
+
+    ## Find names of state (if any) intersected by each point
+    state_names <- states[[name_col]]
+    ii <- as.integer(st_intersects(pts, states))
+    state_names[ii]
+}
+
+## Test the function with points in Wisconsin, Oregon, and France
+testPoints <- data.frame(x = c(-90, -120, 0), y = c(44, 44, 44))
+test <- data.frame(libraries %>% select(Library_Geolocation__Longitude__s, Library_Geolocation__Latitude__s) %>% lonlat_to_state, libraries$State_Province_Region__c)
+sum(is.na(test$libraries.....select.Library_Geolocation__Longitude__s..Library_Geolocation__Latitude__s......))
+```
+```{r}
+libraries[50,]
+```
 
 Research Q's:
 
