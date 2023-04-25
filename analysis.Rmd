@@ -127,9 +127,10 @@ libraries %>% filter(Latitude_MapAnything__c == 37.33889)
 The actual location is in Kosovo, but because they put "KS" as the state this row was mistakenly assigned "United States" as its country. 
 
 The MapAnything location is in San Jose:
-
+![Locaiton in San Jose](sanjose.png)
 
 and the Geolocation is in Kosovo:
+![Location in Kosovo](kosovo.png)
 
 So we have two different examples where the correct coordinates are of different types. 
 
@@ -175,6 +176,7 @@ lonlat_to_state <- function(pointsDF,
     ## Find names of state (if any) intersected by each point
     state_names <- states[[name_col]]
     ii <- as.integer(st_intersects(pts, states))
+    print(ii[49])
     state_names[ii]
 }
 
