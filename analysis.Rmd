@@ -120,12 +120,15 @@ To explore further, let's take one example with a latitude difference of 16.6 an
 ```{r}
 libraries %>% filter(Latitude_MapAnything__c == 26.79489)
 ```
+
 The MapAnything location:
+
 ![Lake Park in Florida](lake_florida.png)
 
 The geolocation:
 
 ![Lake Park in Iowa](lake_iowa.png)
+
 This library is actually displayed incorrectly in Iowa on the official webapp.
 
 Another example is a location with a 101 degree difference in longitude. 
@@ -136,10 +139,13 @@ libraries %>% filter(Latitude_MapAnything__c == 37.33889)
 The actual location is in Kosovo, but because they put "KS" as the state (which is Kansas, not Kosovo) this row was mistakenly assigned "United States" as its country. 
 
 The MapAnything location is in San Jose:
-![Locaiton in San Jose](sanjose.png)
+
+![Location in San Jose](sanjose.png)
 
 and the Geolocation is in Kosovo:
+
 ![Location in Kosovo](kosovo.png)
+
 
 So we have two different examples where the correct coordinates are of different types. If we look at the distribution of coordinates we have: 
 
@@ -190,7 +196,7 @@ alt_classifications <- as.integer(st_intersects(lib_pts_alt, state_pts))
 libraries <- libraries %>% mutate(state = state_names[classifications])
 classifs <- data.frame(state_names[classifications], state_names[alt_classifications])
 sum(is.na(libraries$state))
-classifications != alt_classifications
+#classifications != alt_classifications
 ```
 There are 123 location with coordinates not in the U.S. for whatever reason.
 Let's take a look at them.
