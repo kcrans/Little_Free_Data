@@ -118,6 +118,7 @@ The MapAnything location:
 The geolocation:
 
 ![Lake Park in Iowa](lake_iowa.png)
+This library is actually displayed incorrectly in Iowa on the official webapp.
 
 Another example is a location with a 101 degree difference in longitude. 
 
@@ -143,52 +144,61 @@ Thus summary statistics are similar, but there are enough differences to cause c
 ```{r}
 libraries %>% filter(Latitude_MapAnything__c == 0 & Longitude_MapAnything__c == 0) %>% count()
 ```
+One example is the library with id 14180.
 ```{r}
 libraries %>% filter(id == 14180)
 ```
+None of the values look notable other than the (0, 0) MapAnything coordinates, and this library shows up on the official map.
 
-
-These are basically missing values as all the libraries we are looking at are in the US and thus can't have these coordinates. If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
+These (0, 0) coordinates are basically missing values as all the libraries we are looking at are located in the US and thus they are invalid coordinates If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
 
 ![Screenshot of javascript snippet using Library_Geolocation for the pins on the map](latandlong.png)
 
-So let's just go with that then. 
-
+So let's just use the geolocation coordinates exclusively then.
 
 ```{r}
 libraries %>% select(Postal_Zip_Code__c) %>% unique %>% count
 ```
 
 
+Let's drop every data point with coordinates not located within the United States.
+We can look at what U.S. state a given library is in and then filter out the libraries
+with no state values.
 
 ```{r}
-lonlat_to_state <- function(pointsDF,
-                            states = spData::us_states,
-                            name_col = "NAME") {
-    ## Convert points data.frame to an sf POINTS object
-    pts <- st_as_sf(pointsDF, coords = 1:2, crs = 4326)
+# Convert the coordinates to a sf object
+# Our coordinate reference system is the WGS84 standard which is what Google
+# maps uses. Its EPSG Code is 4326. The format for a point is (longitude, latitude).
+lib_pts <- libraries %>% st_as_sf(coords = c("Library_Geolocation__Longitude__s", "Library_Geolocation__Latitude__s"), crs = st_crs(4326))
 
-    ## Transform spatial data to some planar coordinate system
-    ## (e.g. Web Mercator) as required for geometric operations
-    states <- st_transform(states, crs = 3857)
-    pts <- st_transform(pts, crs = 3857)
+GADM_data <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_1")
+state_pts <- st_transform(GADM_data, crs = 4326)
 
-    ## Find names of state (if any) intersected by each point
-    state_names <- states[[name_col]]
-    ii <- as.integer(st_intersects(pts, states))
-    print(ii[49])
-    state_names[ii]
-}
+state_names <- states_t$NAME_1
+classifications <- as.integer(st_intersects(pts_t, states_t))
 
-## Test the function with points in Wisconsin, Oregon, and France
-testPoints <- data.frame(x = c(-90, -120, 0), y = c(44, 44, 44))
-test <- data.frame(libraries %>% select(Library_Geolocation__Longitude__s, Library_Geolocation__Latitude__s) %>% lonlat_to_state, libraries$State_Province_Region__c)
-sum(is.na(test$libraries.....select.Library_Geolocation__Longitude__s..Library_Geolocation__Latitude__s......))
+libraries <- libraries %>% mutate(state = state_names[classifications])
+
+sum(is.na(libraries$state))
 ```
+There are 123 location with coordinates not in the U.S. for whatever reason.
+Let's take a look at them.
+
 ```{r}
-libraries[50,]
+libraries %>% filter(is.na(state))
 ```
 
+Some of the rows are for foreign libraries, but it look like the majority are libraries with no street entries. Some like charter number G10014(148 Marina Plaza	Dunedin) are located very close to the ocean and hence were classified due to the resolution of the geography. A few like 150219 (1710 S Trenon Ave Tulsa) are mislabeled with coordinates not in the Unites States. Luckily there are only 123 entries, so we can filter them out without major concern.
+
+```{r}
+libraries <- libraries %>% drop_na(state)
+```
+
+Finally we can do some analysis with states:
+
+```{r}
+libraries %>% group_by(state) %>% count
+```
 Research Q's:
 
 Is their a correlation between income in a given zip code and the number of little free libraries?
