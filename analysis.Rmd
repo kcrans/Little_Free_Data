@@ -38,9 +38,12 @@ libraries <- libraries %>% mutate(Map_Me__c = Map_Me__c ==  "Mapped")
 ```
 
 
-
+A quick look at check_in_counts shows that this feature is rarely used considering how many times a given library is actually visited:
 ```{r}
+print("Max:")
 max(libraries$check_in_count)
+print("Summary Stats:")
+summary(libraries$check_in_count)
 ```
 
 ```{r}
@@ -90,25 +93,30 @@ So we can conclude that Little Free Libraries are a predominately American pheno
 libraries <- libraries %>% filter(Country__c == "United States")
 ```
 
+## Analysis by state
+
 How about the distribution by state?
 
 ```{r}
 length(unique(libraries$State_Province_Region__c))
 ```
-But there's only 50 states!
+But there's only 50 states! So we need to do some data cleaning first.
+
 ```{r}
 libraries %>% count(State_Province_Region__c) %>% arrange(desc(n))
 ```
 
 There's a bunch of different spelling variations. Let's instead take the actual coordinates and then find the states ourselves. One point of interest in the dataset to note that there are two sets of coordinates for each row: Latitude_MapAnything__c and Longitude_MapAnything__c vs Library_Geolocation__Latitude__s and Library_Geolocation__Longitude__s.
 
-We can make a datframe with the differences as separate columns:
+We can make a dataframe with the differences as separate columns, and print out the mean difference in latitude and longitude respectively:
 
 ```{r}
-differences <- libraries %>% mutate(dif_lat = (abs(Latitude_MapAnything__c) - abs(Library_Geolocation__Latitude__s)), dif_long = abs(Longitude_MapAnything__c) - abs(Library_Geolocation__Longitude__s)) %>% select(dif_lat, dif_long, Latitude_MapAnything__c, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Library_Geolocation__Longitude__s)
+differences <- libraries %>% mutate(dif_lat = (abs(Latitude_MapAnything__c) - abs(Library_Geolocation__Latitude__s)), dif_long = abs(Longitude_MapAnything__c) - abs(Library_Geolocation__Longitude__s)) %>% select(dif_lat, dif_long)
+c(mean(differences$dif_lat), mean(differences$dif_long))
 ```
+Unfortunately due to the curvature of the earth these values don't mean too much as-is.
 
-If we take one example with a latitude difference of 16.6 and the plug the coordinates into Google maps, we get two different locations, one in Lake Park Iowa and the other in Lake Park Florida:
+To explore further, let's take one example with a latitude difference of 16.6 and then plug the coordinates into Google maps. We get two different locations, one in Lake Park Iowa and the other in Lake Park Florida:
 ```{r}
 libraries %>% filter(Latitude_MapAnything__c == 26.79489)
 ```
@@ -125,7 +133,7 @@ Another example is a location with a 101 degree difference in longitude.
 ```{r}
 libraries %>% filter(Latitude_MapAnything__c == 37.33889)
 ```
-The actual location is in Kosovo, but because they put "KS" as the state this row was mistakenly assigned "United States" as its country. 
+The actual location is in Kosovo, but because they put "KS" as the state (which is Kansas, not Kosovo) this row was mistakenly assigned "United States" as its country. 
 
 The MapAnything location is in San Jose:
 ![Locaiton in San Jose](sanjose.png)
@@ -133,8 +141,7 @@ The MapAnything location is in San Jose:
 and the Geolocation is in Kosovo:
 ![Location in Kosovo](kosovo.png)
 
-So we have two different examples where the correct coordinates are of different types. 
-
+So we have two different examples where the correct coordinates are of different types. If we look at the distribution of coordinates we have: 
 
 ```{r}
 libraries %>% select(Latitude_MapAnything__c, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Library_Geolocation__Longitude__s) %>% summary()
@@ -150,7 +157,7 @@ libraries %>% filter(id == 14180)
 ```
 None of the values look notable other than the (0, 0) MapAnything coordinates, and this library shows up on the official map.
 
-These (0, 0) coordinates are basically missing values as all the libraries we are looking at are located in the US and thus they are invalid coordinates If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
+These (0, 0) coordinates are basically missing values as all the libraries we are looking at are located in the US so (0, 0) is defintely an invalid coordinate. If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
 
 ![Screenshot of javascript snippet using Library_Geolocation for the pins on the map](latandlong.png)
 
@@ -171,15 +178,19 @@ with no state values.
 # maps uses. Its EPSG Code is 4326. The format for a point is (longitude, latitude).
 lib_pts <- libraries %>% st_as_sf(coords = c("Library_Geolocation__Longitude__s", "Library_Geolocation__Latitude__s"), crs = st_crs(4326))
 
+lib_pts_alt <- libraries %>% st_as_sf(coords = c("Longitude_MapAnything__c", "Latitude_MapAnything__c"), crs = st_crs(4326))
+
 GADM_data <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_1")
 state_pts <- st_transform(GADM_data, crs = 4326)
 
-state_names <- states_t$NAME_1
-classifications <- as.integer(st_intersects(pts_t, states_t))
+state_names <- state_pts$NAME_1
+classifications <- as.integer(st_intersects(lib_pts, state_pts))
+alt_classifications <- as.integer(st_intersects(lib_pts_alt, state_pts))
 
 libraries <- libraries %>% mutate(state = state_names[classifications])
-
+classifs <- data.frame(state_names[classifications], state_names[alt_classifications])
 sum(is.na(libraries$state))
+classifications != alt_classifications
 ```
 There are 123 location with coordinates not in the U.S. for whatever reason.
 Let's take a look at them.
@@ -197,8 +208,16 @@ libraries <- libraries %>% drop_na(state)
 Finally we can do some analysis with states:
 
 ```{r}
-libraries %>% group_by(state) %>% count
+state_counts <- libraries %>% group_by(state) %>% count %>% arrange(desc(n))
+state_counts <- state_counts %>% rename("NAME" = "state")
 ```
+
+```{r}
+st_transform(us_states, crs = 3857) %>% full_join(state_counts, by = join_by(NAME)) %>%
+  ggplot(aes(fill = n)) +
+  geom_sf()
+```
+
 Research Q's:
 
 Is their a correlation between income in a given zip code and the number of little free libraries?
