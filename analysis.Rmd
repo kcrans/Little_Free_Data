@@ -184,19 +184,25 @@ with no state values.
 # maps uses. Its EPSG Code is 4326. The format for a point is (longitude, latitude).
 lib_pts <- libraries %>% st_as_sf(coords = c("Library_Geolocation__Longitude__s", "Library_Geolocation__Latitude__s"), crs = st_crs(4326))
 
+# For comparison also convert the MapAnything coordinates into a sf object
 lib_pts_alt <- libraries %>% st_as_sf(coords = c("Longitude_MapAnything__c", "Latitude_MapAnything__c"), crs = st_crs(4326))
 
+# Read in and transform the GADM data to WGS84 format. 
 GADM_data <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_1")
 state_pts <- st_transform(GADM_data, crs = 4326)
 
+# Make a data.frame of all the possible state names
 state_names <- state_pts$NAME_1
+
+# Find the intersections between the library points and state polygons
+# Convert to an integer to use as an index in the state names data.frame.
 classifications <- as.integer(st_intersects(lib_pts, state_pts))
 alt_classifications <- as.integer(st_intersects(lib_pts_alt, state_pts))
 
 libraries <- libraries %>% mutate(state = state_names[classifications])
 classifs <- data.frame(state_names[classifications], state_names[alt_classifications])
 sum(is.na(libraries$state))
-#classifications != alt_classifications
+classifications != alt_classifications
 ```
 There are 123 location with coordinates not in the U.S. for whatever reason.
 Let's take a look at them.
@@ -205,7 +211,29 @@ Let's take a look at them.
 libraries %>% filter(is.na(state))
 ```
 
-Some of the rows are for foreign libraries, but it look like the majority are libraries with no street entries. Some like charter number G10014(148 Marina Plaza	Dunedin) are located very close to the ocean and hence were classified due to the resolution of the geography. A few like 150219 (1710 S Trenon Ave Tulsa) are mislabeled with coordinates not in the Unites States. Luckily there are only 123 entries, so we can filter them out without major concern.
+Some of the rows are for foreign libraries, but it look like the majority are libraries with no street entries. Some like charter number G10014(148 Marina Plaza	Dunedin) are located very close to the ocean and hence were classified incorrectly due to the resolution of the geography. A few like 150219 (1710 S Trenon Ave Tulsa) are mislabeled with coordinates not in the Unites States. Luckily there are only 123 entries, so we can filter them out without major concern.
+
+```{r}
+libraries <- libraries %>% mutate(alt_state = state_names[alt_classifications])
+```
+
+If we take a look at the state assignments based off the geolocation coordinates ("state") and MapAnything coordinates ("alt_state"), the possibilities are:
+
+- NA for both, which means the library is not in the U.S and should be removed from our dataframe.
+
+- An actual state for the geolocation coordinates and NA for MapAnything. We should use the "state" assignment then.
+
+- An actual state for the MapAnything coordinates and NA for the geolocation. We will go with the "alt_state" assignment in this case.
+
+- Actual states for both coordinates. If they are the same, we will go with that assignment. If they are different, we will use whichever assignment lines up with the "State_Province_Region__c" value for that datapoint.
+
+long, lat, actual_state
+
+The library is not in the U.S., so it will have NA values for both coordinates.
+
+```{r}
+libraries %>% filter(state != alt_state) %>% select(State_Province_Region__c, state, alt_state)
+```
 
 ```{r}
 libraries <- libraries %>% drop_na(state)
