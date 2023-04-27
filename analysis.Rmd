@@ -199,45 +199,77 @@ state_names <- state_pts$NAME_1
 classifications <- as.integer(st_intersects(lib_pts, state_pts))
 alt_classifications <- as.integer(st_intersects(lib_pts_alt, state_pts))
 
-libraries <- libraries %>% mutate(state = state_names[classifications])
-classifs <- data.frame(state_names[classifications], state_names[alt_classifications])
-sum(is.na(libraries$state))
-classifications != alt_classifications
+temp_libraries <- libraries %>% mutate(
+  state = state_names[classifications], alt_state = state_names[alt_classifications])
+sum(is.na(temp_libraries$state))
 ```
-There are 123 location with coordinates not in the U.S. for whatever reason.
+There are 123 location with (geolocation) coordinates not in the U.S. for whatever reason.
 Let's take a look at them.
 
 ```{r}
-libraries %>% filter(is.na(state))
+temp_libraries %>% filter(is.na(state))
 ```
 
-Some of the rows are for foreign libraries, but it look like the majority are libraries with no street entries. Some like charter number G10014(148 Marina Plaza	Dunedin) are located very close to the ocean and hence were classified incorrectly due to the resolution of the geography. A few like 150219 (1710 S Trenon Ave Tulsa) are mislabeled with coordinates not in the Unites States. Luckily there are only 123 entries, so we can filter them out without major concern.
+Some of the rows are for foreign libraries, but it look like the majority are libraries with no street entries. Some like charter number G10014(148 Marina Plaza	Dunedin) are located very close to the ocean and hence were classified incorrectly due to the resolution of the geography. A few like 150219 (1710 S Trenon Ave Tulsa) are mislabeled with coordinates not in the Unites States. By manual inspection, it looks the MapAnything coordinates give the appropriate state for some of the cases where the locations are right near a body of water or the street address is missing. When a library is located in a country other than the United States, both columns will have NA values. In general, if we take a look at the state assignments based off the geolocation coordinates ("state") and MapAnything coordinates ("alt_state"), the possibilities are:
+
+1. NA for both. This means either the library is not in the U.S and should be removed from our dataframe, or it is located in the U.S. but too close to the ocean. We filter out data in the former instance and use the "State_Province_Region__c" assignment in the latter.
+
+2. An actual state for the geolocation coordinates and NA for MapAnything. We should use the "state" assignment then.
+
+3. An actual state for the MapAnything coordinates and NA for the geolocation. We will go with the "alt_state" assignment in this case.
+
+4. and 5. Actual states for both coordinates. If they are the same, we will go with that assignment. If they are different, we will use whichever assignment lines up with the "State_Province_Region__c" value for that datapoint.
+
+Now, let's create a new column state_name to hold whatever state name based off the above criteria, and also long and lat columns to hold the coordinates we end up using.
+
+1.
+```{r}
+libraries_1 <- temp_libraries
+libraries_1 <- libraries_1 %>% add_column(state_name = NA, long = NA, lat = NA)
+temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c))
+```
+The library in Alytus, Lithuania is the only one not in the U.S. So let's just drop that one and add the new state assignments:
 
 ```{r}
-libraries <- libraries %>% mutate(alt_state = state_names[alt_classifications])
+case_1 <- temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c)) %>%
+  filter(City__c != "Alytus") %>% mutate(state_name = State_Province_Region__c, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
 ```
 
-If we take a look at the state assignments based off the geolocation coordinates ("state") and MapAnything coordinates ("alt_state"), the possibilities are:
+2.
+```{r}
+case_2 <- temp_libraries %>% filter(!is.na(state) & is.na(alt_state)) %>%
+  mutate(state_name = state, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
+```
 
-- NA for both, which means the library is not in the U.S and should be removed from our dataframe.
+3.
+```{r}
+case_3 <- temp_libraries %>% filter(is.na(state) & !is.na(alt_state)) %>%
+  mutate(state_name = alt_state, long = Longitude_MapAnything__c, lat = Latitude_MapAnything__c)
+```
 
-- An actual state for the geolocation coordinates and NA for MapAnything. We should use the "state" assignment then.
 
-- An actual state for the MapAnything coordinates and NA for the geolocation. We will go with the "alt_state" assignment in this case.
+4.
+```{r}
+case_4 <- temp_libraries %>% filter(state == alt_state)
+```
 
-- Actual states for both coordinates. If they are the same, we will go with that assignment. If they are different, we will use whichever assignment lines up with the "State_Province_Region__c" value for that datapoint.
+5.
+```{r}
+temp_libraries %>% filter(state != alt_state)
+```
 
-long, lat, actual_state
-
-The library is not in the U.S., so it will have NA values for both coordinates.
+Joining it all together:
 
 ```{r}
-libraries %>% filter(state != alt_state) %>% select(State_Province_Region__c, state, alt_state)
+temp_lib <- bind_rows(case_1, case_2, case_3, case_4)
 ```
 
-```{r}
-libraries <- libraries %>% drop_na(state)
-```
+** Then drop state, alt_state, and both original coordinates
+
+** Then sort rows based off id
+
+** Then store as library
+
 
 Finally we can do some analysis with states:
 
@@ -255,7 +287,7 @@ st_transform(us_states, crs = 3857) %>% full_join(state_counts, by = join_by(NAM
 Research Q's:
 
 Is their a correlation between income in a given zip code and the number of little free libraries?
-What about political part preference?
+What about political party preference?
 How about climate(i.e. colder areas might have less LFLs which are outdoors by design)
 
 
