@@ -222,17 +222,83 @@ Some of the rows are for foreign libraries, but it look like the majority are li
 
 Now, let's create a new column state_name to hold whatever state name based off the above criteria, and also long and lat columns to hold the coordinates we end up using.
 
+First, here's a helper function to convert state abbreviations into full names:
+```{r}
+convert_state <- function(state_code) {
+  name_str <- switch(state_code,
+  "AL" = "Alabama",
+  "AK" = "Alaska",
+  "AZ" = "Alaska",
+  "AR" = "Arkansas",
+  "AS" = "American Samoa",
+  "CA" = "California",
+  "CO" = "Colorado",
+  "CT" = "Connecticut",
+  "DE" = "Delaware",
+  "DC" = "District of Columbia",
+  "FL" = "Florida",
+  "GA" = "Georgia",
+  "GU" = "Guam",
+  "HI" = "Hawaii",
+  "ID" = "Idaho",
+  "IL" = "Illinois",
+  "IN" = "Indiana",
+  "IA" = "Iowa",
+  "KS" = "Kansas",
+  "KY" = "Kentucky",
+  "LA" = "Louisiana",
+  "ME" = "Maine",
+  "MD" = "Maryland",
+  "MA" = "Massachusetts",
+  "MI" = "Michigan",
+  "MN" = "Minnesota",
+  "MS" = "Mississippi",
+  "MO" = "Missouri",
+  "MT" = "Montana",
+  "NE" = "Nebraska",
+  "NV" = "Nevada",
+  "NH" = "New Hampshire",
+  "NJ" = "New Jersey",
+  "NM" = "New Mexico",
+  "NY" = "New York",
+  "NC" = "North Carolina",
+  "ND" = "North Dakota",
+  "MP" = "Northern Mariana Islands",
+  "OH" = "Ohio",
+  "OK" = "Oklahoma",
+  "OR" = "Oregon",
+  "PA" = "Pennsylvania",
+  "PR" = "Puerto Rico",
+  "RI" = "Rhode Island",
+  "SC" = "South Carolina",
+  "SD" = "South Dakota",
+  "TD" = "Tennessee",
+  "TX" = "Texas",
+  "TT" = "Trust Territories",
+  "UT" = "Utah",
+  "VT" = "Vermont",
+  "VA" = "Virginia",
+  "VI" = "Virgin Islands",
+  "WA" = "Washington",
+  "WV" = "West Virginia",
+  "WI" = "Wisconsin",
+  "WY" = "Wyoming"
+  )
+  return(name_str)
+}
+convert_state <- Vectorize(convert_state)
+```
+
+
 1.
 ```{r}
-libraries_1 <- temp_libraries
-libraries_1 <- libraries_1 %>% add_column(state_name = NA, long = NA, lat = NA)
 temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c))
 ```
 The library in Alytus, Lithuania is the only one not in the U.S. So let's just drop that one and add the new state assignments:
 
 ```{r}
 case_1 <- temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c)) %>%
-  filter(City__c != "Alytus") %>% mutate(state_name = State_Province_Region__c, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
+  filter(City__c != "Alytus") %>% mutate(state_name = convert_state(State_Province_Region__c), long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
 ```
 
 2.
@@ -250,19 +316,25 @@ case_3 <- temp_libraries %>% filter(is.na(state) & !is.na(alt_state)) %>%
 
 4.
 ```{r}
-case_4 <- temp_libraries %>% filter(state == alt_state)
+case_4 <- temp_libraries %>% filter(state == alt_state) %>% mutate(state_name = state, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
 ```
 
 5.
 ```{r}
-temp_libraries %>% filter(state != alt_state)
+case_5a <- temp_libraries %>% filter(state != alt_state ) %>% mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) %>% filter(State_Province_Region__c == state) %>% mutate(state_name = state, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
+```
+
+```{r}
+case_5b <- temp_libraries %>% filter(state != alt_state ) %>% mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) %>% filter(State_Province_Region__c == alt_state) %>% mutate(state_name = alt_state, long = Longitude_MapAnything__c, lat = Latitude_MapAnything__c)
 ```
 
 Joining it all together:
 
 ```{r}
-temp_lib <- bind_rows(case_1, case_2, case_3, case_4)
+temp_libraries <- bind_rows(case_1, case_2, case_3, case_4, case_5a, case_5b)
+libraries <- select(temp_libraries, -c(state, alt_state, State_Province_Region__c, Library_Geolocation__Longitude__s, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Latitude_MapAnything__c )) %>% arrange(id)
 ```
+
 
 ** Then drop state, alt_state, and both original coordinates
 
@@ -274,8 +346,8 @@ temp_lib <- bind_rows(case_1, case_2, case_3, case_4)
 Finally we can do some analysis with states:
 
 ```{r}
-state_counts <- libraries %>% group_by(state) %>% count %>% arrange(desc(n))
-state_counts <- state_counts %>% rename("NAME" = "state")
+state_counts <- libraries %>% group_by(state_name) %>% count %>% arrange(desc(n))
+state_counts <- state_counts %>% rename("NAME" = "state_name")
 ```
 
 ```{r}
