@@ -27,6 +27,7 @@ if (file.exists("lfl.RData")) {
 
 ## Data Cleaning and Preparation
 
+Let's take a look at the different data types of the columns:
 ```{r}
 lapply(libraries, typeof)
 ```
@@ -38,7 +39,7 @@ libraries <- libraries %>% mutate(Map_Me__c = Map_Me__c ==  "Mapped")
 ```
 
 
-A quick look at check_in_counts shows that this feature is rarely used considering how many times a given library is actually visited:
+A quick look at check_in_counts shows that this feature is rarely used when you consider how many times a given library is actually visited:
 ```{r}
 print("Max:")
 max(libraries$check_in_count)
@@ -87,10 +88,14 @@ And in Canada is:
 format(can_count/can_pop, scientific = FALSE)
 ```
 
-So we can conclude that Little Free Libraries are a predominately American phenomenon. For the purposes of further analysis, let's exclude all data points not in the US:
 
 ```{r}
-libraries <- libraries %>% filter(Country__c == "United States")
+libraries %>% filter(is.na(Country__c) & !is.na(State_Province_Region__c))
+```
+So we can conclude that Little Free Libraries are a predominately American phenomenon. For the purposes of further analysis, let's exclude all data points not in the US. We will also include rows that have a NA country value (but still a state code) as on inspection many of them are actually located in the US. We can impute the correct country code based off the coordinates later.
+
+```{r}
+libraries <- libraries %>% filter(Country__c == "United States" | (is.na(Country__c) & !is.na(State_Province_Region__c)))
 ```
 
 ## Analysis by state
@@ -106,7 +111,7 @@ But there's only 50 states! So we need to do some data cleaning first.
 libraries %>% count(State_Province_Region__c) %>% arrange(desc(n))
 ```
 
-There's a bunch of different spelling variations. Let's instead take the actual coordinates and then find the states ourselves. One point of interest in the dataset to note that there are two sets of coordinates for each row: Latitude_MapAnything__c and Longitude_MapAnything__c vs Library_Geolocation__Latitude__s and Library_Geolocation__Longitude__s.
+There's a bunch of different spelling variations. Let's instead take the actual coordinates and then find the states ourselves. One point of interest in the dataset to note is that there are two sets of coordinates for each row: Latitude_MapAnything__c and Longitude_MapAnything__c vs Library_Geolocation__Latitude__s and Library_Geolocation__Longitude__s.
 
 We can make a dataframe with the differences as separate columns, and print out the mean difference in latitude and longitude respectively:
 
@@ -163,15 +168,11 @@ libraries %>% filter(id == 14180)
 ```
 None of the values look notable other than the (0, 0) MapAnything coordinates, and this library shows up on the official map.
 
-These (0, 0) coordinates are basically missing values as all the libraries we are looking at are located in the US so (0, 0) is defintely an invalid coordinate. If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
+These (0, 0) coordinates are basically missing values as all the libraries we are looking at are located in the US so (0, 0) is definitely an invalid coordinate. If we look at the webapp, it appears that the developers use the geolocation values on the interactive map:
 
 ![Screenshot of javascript snippet using Library_Geolocation for the pins on the map](latandlong.png)
 
-So let's just use the geolocation coordinates exclusively then.
-
-```{r}
-libraries %>% select(Postal_Zip_Code__c) %>% unique %>% count
-```
+So let's default to the geolocation coordinates, but use the MapAnythin coordinates if they match up with the address listed.
 
 
 Let's drop every data point with coordinates not located within the United States.
@@ -203,11 +204,14 @@ temp_libraries <- libraries %>% mutate(
   state = state_names[classifications], alt_state = state_names[alt_classifications])
 sum(is.na(temp_libraries$state))
 ```
-There are 123 location with (geolocation) coordinates not in the U.S. for whatever reason.
+There are 166 locations with (geolocation) coordinates not in the U.S. for whatever reason.
 Let's take a look at them.
 
 ```{r}
-temp_libraries %>% filter(is.na(state))
+temp_libraries %>% mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) 
+
+```{r}
+temp_libraries %>% filter(is.na(state) & is.na(alt_state))
 ```
 
 Some of the rows are for foreign libraries, but it look like the majority are libraries with no street entries. Some like charter number G10014(148 Marina Plaza	Dunedin) are located very close to the ocean and hence were classified incorrectly due to the resolution of the geography. A few like 150219 (1710 S Trenon Ave Tulsa) are mislabeled with coordinates not in the Unites States. By manual inspection, it looks the MapAnything coordinates give the appropriate state for some of the cases where the locations are right near a body of water or the street address is missing. When a library is located in a country other than the United States, both columns will have NA values. In general, if we take a look at the state assignments based off the geolocation coordinates ("state") and MapAnything coordinates ("alt_state"), the possibilities are:
@@ -225,7 +229,8 @@ Now, let's create a new column state_name to hold whatever state name based off 
 First, here's a helper function to convert state abbreviations into full names:
 ```{r}
 convert_state <- function(state_code) {
-  name_str <- switch(state_code,
+  up_code <- toupper(state_code) # Ignore case differences
+  name_str <- switch(up_code,
   "AL" = "Alabama",
   "AK" = "Alaska",
   "AZ" = "Alaska",
@@ -272,7 +277,7 @@ convert_state <- function(state_code) {
   "RI" = "Rhode Island",
   "SC" = "South Carolina",
   "SD" = "South Dakota",
-  "TD" = "Tennessee",
+  "TN" = "Tennessee",
   "TX" = "Texas",
   "TT" = "Trust Territories",
   "UT" = "Utah",
@@ -282,7 +287,8 @@ convert_state <- function(state_code) {
   "WA" = "Washington",
   "WV" = "West Virginia",
   "WI" = "Wisconsin",
-  "WY" = "Wyoming"
+  "WY" = "Wyoming",
+  state_code
   )
   return(name_str)
 }
@@ -292,12 +298,12 @@ convert_state <- Vectorize(convert_state)
 
 1.
 ```{r}
-temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c))
+ temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c) & !is.na(Country__c))
 ```
 The library in Alytus, Lithuania is the only one not in the U.S. So let's just drop that one and add the new state assignments:
 
 ```{r}
-case_1 <- temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c)) %>%
+case_1 <- temp_libraries %>% filter(is.na(state) & is.na(alt_state)) %>% filter(!is.na(State_Province_Region__c) & !is.na(Country__c)) %>%
   filter(City__c != "Alytus") %>% mutate(state_name = convert_state(State_Province_Region__c), long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
 ```
 
@@ -319,29 +325,24 @@ case_3 <- temp_libraries %>% filter(is.na(state) & !is.na(alt_state)) %>%
 case_4 <- temp_libraries %>% filter(state == alt_state) %>% mutate(state_name = state, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
 ```
 
+
 5.
 ```{r}
 case_5a <- temp_libraries %>% filter(state != alt_state ) %>% mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) %>% filter(State_Province_Region__c == state) %>% mutate(state_name = state, long = Library_Geolocation__Longitude__s, lat = Library_Geolocation__Latitude__s)
 ```
 
 ```{r}
-case_5b <- temp_libraries %>% filter(state != alt_state ) %>% mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) %>% filter(State_Province_Region__c == alt_state) %>% mutate(state_name = alt_state, long = Longitude_MapAnything__c, lat = Latitude_MapAnything__c)
+case_5b <- temp_libraries %>% filter(state != alt_state ) %>%  mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) %>% filter(State_Province_Region__c == alt_state) %>% mutate(state_name = alt_state, long = Longitude_MapAnything__c, lat = Latitude_MapAnything__c)
 ```
 
 Joining it all together:
 
 ```{r}
 temp_libraries <- bind_rows(case_1, case_2, case_3, case_4, case_5a, case_5b)
-libraries <- select(temp_libraries, -c(state, alt_state, State_Province_Region__c, Library_Geolocation__Longitude__s, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Latitude_MapAnything__c )) %>% arrange(id)
+# Drop state, alt_state, and both original coordinates
+libraries <- select(temp_libraries, -c(state, alt_state, State_Province_Region__c, Library_Geolocation__Longitude__s, Library_Geolocation__Latitude__s, Longitude_MapAnything__c, Latitude_MapAnything__c )) %>% 
+  arrange(id) # Sort rows based off id
 ```
-
-
-** Then drop state, alt_state, and both original coordinates
-
-** Then sort rows based off id
-
-** Then store as library
-
 
 Finally we can do some analysis with states:
 
@@ -351,9 +352,34 @@ state_counts <- state_counts %>% rename("NAME" = "state_name")
 ```
 
 ```{r}
+state_counts %>% ggplot(aes(x = n)) +
+  geom_histogram(binwidth = 1000)
+```
+
+
+```{r}
 st_transform(us_states, crs = 3857) %>% full_join(state_counts, by = join_by(NAME)) %>%
   ggplot(aes(fill = n)) +
-  geom_sf()
+  geom_sf() + 
+  labs(fill = "Number of LFLs") + 
+  scale_fill_fermenter(n.breaks = 9, direction = 1, palette = "Oranges") +
+  ggtitle("Number of Little Free Libraries per state")
+```
+And then if we normalize by population:
+
+```{r}
+state_pops = as_tibble(read_csv("census_data.csv"))
+state_pops <- state_pops[1,] %>% select(-"Label (Grouping)" ) %>% pivot_longer(cols = everything(), names_to = "NAME", values_to = "pop")
+norm_state_counts <- state_counts %>% left_join(state_pops) %>% mutate(per_cap = 10000*n/pop) %>% select(!c(n, pop))
+```
+
+```{r}
+st_transform(us_states, crs = 3857) %>% left_join(norm_state_counts, by = join_by(NAME)) %>%
+  ggplot(aes(fill = per_cap)) +
+  geom_sf() + 
+  labs(fill = "Number of LFLs") + 
+  scale_fill_fermenter(n.breaks = 9, direction = 1, palette = "Oranges") +
+  ggtitle("Number of Little Free Libraries per 10,000 residents by state")
 ```
 
 Research Q's:
