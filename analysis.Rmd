@@ -208,9 +208,6 @@ There are 166 locations with (geolocation) coordinates not in the U.S. for whate
 Let's take a look at them.
 
 ```{r}
-temp_libraries %>% mutate(State_Province_Region__c = convert_state(State_Province_Region__c)) 
-
-```{r}
 temp_libraries %>% filter(is.na(state) & is.na(alt_state))
 ```
 
@@ -368,7 +365,7 @@ st_transform(us_states, crs = 3857) %>% full_join(state_counts, by = join_by(NAM
 And then if we normalize by population:
 
 ```{r}
-state_pops = as_tibble(read_csv("census_data.csv"))
+state_pops = as_tibble(read_csv("census_pop_data.csv"))
 state_pops <- state_pops[1,] %>% select(-"Label (Grouping)" ) %>% pivot_longer(cols = everything(), names_to = "NAME", values_to = "pop")
 norm_state_counts <- state_counts %>% left_join(state_pops) %>% mutate(per_cap = 10000*n/pop) %>% select(!c(n, pop))
 ```
@@ -377,9 +374,53 @@ norm_state_counts <- state_counts %>% left_join(state_pops) %>% mutate(per_cap =
 st_transform(us_states, crs = 3857) %>% left_join(norm_state_counts, by = join_by(NAME)) %>%
   ggplot(aes(fill = per_cap)) +
   geom_sf() + 
-  labs(fill = "Number of LFLs") + 
+  labs(fill = "LFLs per 10,000 residents") + 
   scale_fill_fermenter(n.breaks = 9, direction = 1, palette = "Oranges") +
-  ggtitle("Number of Little Free Libraries per 10,000 residents by state")
+  ggtitle("Number of Little Free Libraries (population normalized)")
+```
+Per capita, it looks like the distribution of LFLs is biased towards the Midwest, in particular Minnesota and Wisconsin. This is not surprising, as the organization was founded in Hudson, Wisconsin and eventually moved to Minneapolis, Minnesota.
+
+
+## Analysis by zipcode
+
+There are many faults to doing geospatial analysis based off zipcodes (they overlap, are not contiguous, etc...) but let's just take a quick look:
+
+```{r}
+library(tidycensus)
+census_api_key("7ce885ce139c2116d8d26ffca665df473f98a98c")
+```
+```{r}
+county_incomes <- get_acs(geography = "county", variables = "B19013_001", year = 2021)
+```
+```{r}
+# Convert the coordinates to a sf object
+# Our coordinate reference system is the WGS84 standard which is what Google
+# maps uses. Its EPSG Code is 4326. The format for a point is (longitude, latitude).
+lib_pts <- libraries %>% st_as_sf(coords = c("long", "lat"), crs = st_crs(4326))
+
+# Read in and transform the GADM data to WGS84 format. 
+GADM_data2 <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_2")
+county_pts <- st_transform(GADM_data2, crs = 4326)
+
+# Make a data.frame of all the possible state names
+county_names <- county_pts$NAME_2
+
+# Find the intersections between the library points and state polygons
+# Convert to an integer to use as an index in the state names data.frame.
+classifications <- as.integer(st_intersects(lib_pts, county_pts))
+
+temp_libraries <- libraries %>% mutate(
+  county = county_names[classifications])
+#sum(is.na(temp_libraries$state))
+```
+
+```{r}
+# Read in and transform the GADM data to WGS84 format. 
+GADM_data2 <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_2")
+county_pts <- st_transform(GADM_data2, crs = 4326)
+```
+```{r}
+county_names
 ```
 
 Research Q's:
