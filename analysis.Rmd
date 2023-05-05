@@ -398,7 +398,7 @@ county_incomes <- get_acs(geography = "county", variables = "B19013_001", year =
 # maps uses. Its EPSG Code is 4326. The format for a point is (longitude, latitude).
 lib_pts <- libraries %>% st_as_sf(coords = c("long", "lat"), crs = st_crs(4326))
 
-# Read in and transform the GADM data to WGS84 format. 
+# Read in and transform the GADM county data to WGS84 format. 
 GADM_data2 <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_2")
 county_pts <- st_transform(GADM_data2, crs = 4326)
 
@@ -411,16 +411,19 @@ classifications <- as.integer(st_intersects(lib_pts, county_pts))
 
 temp_libraries <- libraries %>% mutate(
   county = county_names[classifications])
-#sum(is.na(temp_libraries$state))
+```
+```{r}
+temp_libraries %>% filter(is.na(county))
 ```
 
+
+
 ```{r}
-# Read in and transform the GADM data to WGS84 format. 
-GADM_data2 <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_2")
-county_pts <- st_transform(GADM_data2, crs = 4326)
+temp_names <- temp_libraries %>% unite(county_name, c("county", "state_name"), sep = " County, ") %>% select(county_name) 
+temp_names[25,]
 ```
 ```{r}
-county_names
+county_incomes %>% separate_wider_delim(NAME, delim = ", ", names = c("county", "state"))
 ```
 
 Research Q's:
