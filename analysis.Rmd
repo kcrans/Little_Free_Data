@@ -16,7 +16,6 @@ rm(list = ls())
 ```
 
 ```{r}
-typeof(read_csv("libraries.csv"))
 if (file.exists("lfl.RData")) {
   load("lfl.RData")
 } else {
@@ -89,9 +88,6 @@ format(can_count/can_pop, scientific = FALSE)
 ```
 
 
-```{r}
-libraries %>% filter(is.na(Country__c) & !is.na(State_Province_Region__c))
-```
 So we can conclude that Little Free Libraries are a predominately American phenomenon. For the purposes of further analysis, let's exclude all data points not in the US. We will also include rows that have a NA country value (but still a state code) as on inspection many of them are actually located in the US. We can impute the correct country code based off the coordinates later.
 
 ```{r}
@@ -401,9 +397,15 @@ lib_pts <- libraries %>% st_as_sf(coords = c("long", "lat"), crs = st_crs(4326))
 # Read in and transform the GADM county data to WGS84 format. 
 GADM_data2 <- st_read(dsn = "gadm36_USA_gpkg/gadm36_USA.gpkg", layer = "gadm36_USA_2")
 county_pts <- st_transform(GADM_data2, crs = 4326)
+county_pts <- county_pts %>% mutate(COUNTY = recode(TYPE_2, "Independent City" = "city", "City And County" = "County", "City" = "city", "District" = "")) %>% 
+  mutate(NAME = recode(NAME_2, "Fairfax City" = "Fairfax", "Carson City" = "Carson", "Roanoke City" = "Roanoke", "Dona Ana" = "Doña Ana", "Valdez-Cordova" = "Copper River", "Prince of Wales-Outer Ketchi" = "Prince of Wales-Hyder")) %>% 
+  mutate(NAME = str_replace_all(NAME, "Saint", "St.")) %>%
+  mutate(NAME = str_replace_all(NAME, "De Kalb", "DeKalb")) %>%
+  mutate(NAME = str_replace_all(NAME, "La Salle", "LaSalle")) %>% 
+  unite(county_name, c("NAME", "COUNTY"), sep = " ") %>% mutate(county_name = recode(county_name, "Clifton Forge City city" = "Alleghany County", "Bedford City city" = "Bedford County", "Mc Kean County" = "McKean County", "St.e Genevieve County" = "Ste. Genevieve County", "District of Columbia " = "District of Columbia"))
 
-# Make a data.frame of all the possible state names
-county_names <- county_pts$NAME_2
+# Make a data.frame of all the possible county names
+county_names <- county_pts$county_name
 
 # Find the intersections between the library points and state polygons
 # Convert to an integer to use as an index in the state names data.frame.
@@ -419,11 +421,70 @@ temp_libraries %>% filter(is.na(county))
 
 
 ```{r}
-temp_names <- temp_libraries %>% unite(county_name, c("county", "state_name"), sep = " County, ") %>% select(county_name) 
-temp_names[25,]
+temp_names <- temp_libraries  %>% unite(full_name, c("county", "state_name"), sep = ", ")  %>% 
+  mutate(full_name = recode(full_name, "Shannon County, South Dakota" = "Oglala Lakota County, South Dakota")) %>%
+  mutate(full_name = replace(full_name, City__c == "Valdez", "Chugach Census Area, Alaska")) %>%  
+  mutate(full_name = replace(full_name, City__c == "Kake", "Prince of Wales-Hyder Census Area, Alaska")) %>%
+  mutate(full_name = replace(full_name, City__c == "Wrangell", "Wrangell City and Borough, Alaska")) %>% 
+  mutate(full_name = replace(full_name, City__c == "Sackets Harbor", "Jefferson County, New York")) %>%
+  mutate(full_name = replace(full_name, City__c == "Washburn" & Postal_Zip_Code__c == "54891", "Bayfield County, Wisconsin")) %>%
+  mutate(full_name = replace(full_name, City__c == "Baileys Harbor", "Door County, Wisconsin")) %>%
+  mutate(full_name = replace(full_name, City__c == "Duluth" & Postal_Zip_Code__c == "55802", "St. Louis County, Minnesota")) %>%
+  mutate(full_name = replace(full_name, City__c == "Sodus Pt.", "Wayne County, New York")) %>%
+  mutate(full_name = replace(full_name, City__c == "Bridgman", "Berrien County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Menominee", "Menominee County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Erie" & Postal_Zip_Code__c == "16505", "Erie County, Pennsylvania")) %>%
+  mutate(full_name = replace(full_name, City__c == "Niagara Falls", "Niagara County, New York")) %>%
+  mutate(full_name = replace(full_name, City__c == "Sault Ste. Marie", "Chippewa County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Sturgeon Bay", "Door County, Wisconsin")) %>%
+  mutate(full_name = replace(full_name, City__c == "Manistee", "Manistee County, Michigan")) %>%
+  mutate(full_name = replace(full_name, Postal_Zip_Code__c == "14612", "Monroe County, New York")) %>%
+  mutate(full_name = replace(full_name, City__c == "Houghton", "Houghton County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Mears", "Oceana County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Racine", "Racine County, Wisconsin")) %>%
+  mutate(full_name = replace(full_name, City__c == "Lake Linden", "Houghton County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Muskegon", "Muskegon County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "East Tawas", "Iosco County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Fineview", "Jefferson County, New York")) %>%
+  mutate(full_name = replace(full_name, City__c == "Augres", "Arenac County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Petoskey", "Emmet County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Omena", "Leelanau County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Sheboygan", "Sheboygan County, Wisconsin")) %>%
+  mutate(full_name = replace(full_name, City__c == "Houghton", "Houghton County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "MANITOWOC", "Manitowoc County, Wisconsin")) %>%
+  mutate(full_name = replace(full_name, City__c == "Port Huron", "St. Clair County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Detroit", "Wayne County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Wolcott" & Postal_Zip_Code__c == "14590", "Wayne County, New York")) %>%
+  mutate(full_name = replace(full_name, City__c == "Tawas City", "Iosco County, Michigan")) %>%
+  mutate(full_name = replace(full_name, City__c == "Marinette", "Marinette County, Wisconsin")) %>%
+
+  select(City__c, Postal_Zip_Code__c, full_name) #%>%  %>%
+ # unique()
+
 ```
+
 ```{r}
-county_incomes %>% separate_wider_delim(NAME, delim = ", ", names = c("county", "state"))
+temp_comp <- county_incomes %>% separate_wider_delim(NAME, delim = ", ", names = c("county", "state")) %>% select(county, state)
+```
+
+```{r}
+temp_names %>% filter(!(tolower(full_name) %in% tolower(county_incomes$NAME)))
+```
+
+```{r}
+temp_libraries %>% filter(City__c == "Marinette")
+```
+
+```{r}
+county_incomes %>% filter(NAME == "Allegheny County, Pennsylvania")
+temp_names %>% filter(full_name == "Allegheny County, Pennsylvania")
+```
+
+
+
+```{r}
+temp_comp %>% filter(state == "Virginia")
+temp_libraries %>% filter(county == "Clifton Forge City")
 ```
 
 Research Q's:
